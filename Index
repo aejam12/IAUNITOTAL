@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reconocimiento Facial con SheetDB y IA</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+    .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 450px; text-align: center; }
+    video, canvas, img { width: 100%; max-height: 280px; border-radius: 8px; background: #000; object-fit: cover; margin-top: 10px; }
+    input { width: 90%; padding: 10px; margin: 8px 0; border: 1px solid #ccc; border-radius: 6px; }
+    button { padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; background: #1a73e8; color: white; margin: 5px; }
+    button.secondary { background: #5f6368; }
+    .tabs { display: flex; justify-content: center; gap: 10px; margin-bottom: 15px; }
+    .resultado { margin-top: 15px; padding: 10px; background: #e8f0fe; border-radius: 6px; text-align: left; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>Control Biométrico</h2>
+    <div class="tabs">
+      <button onclick="cambiarModo('registrar')">Registrar Persona</button>
+      <button class="secondary" onclick="cambiarModo('verificar')">Verificar Rostro</button>
+    </div>
+
+    <!-- SECCION REGISTRO -->
+    <div id="seccionRegistro">
+      <h3>Nuevo Registro</h3>
+      <input type="text" id="regCedula" placeholder="Número de Cédula">
+      <input type="text" id="regNombre" placeholder="Nombre">
+      <input type="text" id="regApellido" placeholder="Apellido">
+      
+      <video id="videoReg" autoplay playsinline muted></video>
+      <canvas id="canvasReg" style="display:none;"></canvas>
+      <br>
+      <button onclick="tomarFotoRegistro()">Capturar Foto Base</button>
+      <button id="btnGuardar" onclick="enviarRegistro()" disabled style="background: #34a853;">Guardar en SheetDB</button>
+    </div>
+
+    <!-- SECCION VERIFICACION -->
+    <div id="seccionVerificacion" style="display:none;">
+      <h3>Verificación por IA</h3>
+      <video id="videoVer" autoplay playsinline muted></video>
+      <canvas id="canvasVer" style="display:none;"></canvas>
+      <br>
+      <button onclick="compararRostro()" style="background: #fbbc05; color: black;">Escanear y Comparar</button>
+      
+      <div id="infoResultado" class="resultado" style="display:none;"></div>
+    </div>
+
+    <p id="estado" style="font-size: 13px; color: #666; margin-top: 10px;"></p>
+  </div>
+
+  <script>
+    const URL_APPS_SCRIPT = "URL_DE_TU_WEB_APP_APPS_SCRIPT"; // Reemplaza aquí
+    let streamActivo = null;
+    let fotoBase64Data = null;
+
+    function cambiarModo(modo) {
+      detenerCamara();
+      if (modo === 'registrar') {
+        document.getElementById('seccionRegistro').style.display = 'block';
+        document.getElementById('seccionVerificacion').style.display = 'none';
+        iniciarCamara('videoReg');
+      } else {
+        document.getElementById('seccionRegistro').style.display = 'none';
+        document.getElementById('seccionVerificacion').style.display = 'block';
+        iniciarCamara('videoVer');
+      }
+    }
+
+    async function iniciarCamara(elementId) {
+      try {
+        streamActivo = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+        document.getElementById(elementId).srcObject = streamActivo;
+        document.getElementById('estado').innerText = "Cámara lista con permisos activos.";
+      } catch (err) {
+        document.getElementById('estado').innerText = "Error: Permiso de cámara denegado.";
+      }
+    }
+
+    function detenerCamara() {
+      if (streamActivo) {
+        streamActivo.getTracks().forEach(track => track.stop());
+      }
+    }
+
+    function tomarFotoRegistro() {
+      const video = document.getElementById('videoReg');
+      const canvas = document.getElementById('canvasReg');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      fotoBase64Data = canvas.toDataURL('image/jpeg', 0.8);
+      
+      video.style.display = 'none';
+      canvas.style.display = 'block';
+      document.getElementById('btnGuardar').disabled = false;
+      document.getElementById('estado').innerText = "Foto base capturada.";
+    }
+
+    async function enviarRegistro() {
+      const cedula = document.getElementById('regCedula').value;
+      const nombre = document.getElementById('regNombre').value;
+      const apellido = document.getElementById('regApellido').value;
+
+      if (!cedula || !nombre || !apellido || !fotoBase64Data) {
+        alert("Por favor completa todos los campos y captura la foto.");
+        return;
+      }
+
+      document.getElementById('estado').innerText = "Guardando en SheetDB...";
+
+      await fetch(URL_APPS_SCRIPT, {
+        method: "POST",
+        body: JSON.stringify({
+          accion: "registrar",
+          cedula: cedula,
+          nombre: nombre,
+          apellido: apellido,
+          fotoBase: fotoBase64Data
+        })
+      });
+
+      alert("¡Persona registrada con éxito!");
+      location.reload();
+    }
+
+    async function compararRostro() {
+      const video = document.getElementById('videoVer');
+      const canvas = document.getElementById('canvasVer');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      const fotoCapturada = canvas.toDataURL('image/jpeg', 0.8);
+
+      document.getElementById('estado').innerText = "Comparando rostro con IA y buscando en SheetDB...";
+      document.getElementById('infoResultado').style.display = 'none';
+
+      try {
+        let respuesta = await fetch(URL_APPS_SCRIPT, {
+          method: "POST",
+          body: JSON.stringify({
+            accion: "verificar",
+            fotoCapturada: fotoCapturada
+          })
+        });
+
+        let resultado = await respuesta.json();
+        const divRes = document.getElementById('infoResultado');
+
+        if (resultado.encontrado) {
+          document.getElementById('estado').innerText = "¡Coincidencia encontrada!";
+          divRes.style.display = 'block';
+          divRes.innerHTML = `
+            <strong>¡Identidad Verificada!</strong><br>
+            <b>Cédula:</b> ${resultado.persona.cedula}<br>
+            <b>Nombre:</b> ${resultado.persona.nombre} ${resultado.persona.apellido}<br>
+            <img src="${resultado.persona.fotoBase}" style="width:100px; height:100px; border-radius:50%; object-fit:cover; margin-top:5px;">
+          `;
+        } else {
+          document.getElementById('estado').innerText = "No se encontró coincidencia.";
+          divRes.style.display = 'block';
+          divRes.innerHTML = `<b>Resultado:</b> ${resultado.mensaje || "Rostro no registrado."}`;
+        }
+      } catch (err) {
+        document.getElementById('estado').innerText = "Error en la verificación: " + err;
+      }
+    }
+
+    // Iniciar por defecto en modo registro
+    iniciarCamara('videoReg');
+  </script>
+</body>
+</html>
